@@ -1,0 +1,444 @@
+<html><head><base href="https://agar.io/">
+<title>Advanced Agar.io Clone with Improved AI</title>
+<style>
+  body {
+    background-color: #0a0a0a;
+    color: #00ff00;
+  }
+  #gameCanvas {
+    display: block;
+    border: 2px solid #00ff00;
+  }
+  #playerInfo {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 18px;
+    background-color: rgba(0, 255, 0, 0.2);
+    color: #00ff00;
+    border: 1px solid #00ff00;
+    padding: 5px;
+    border-radius: 5px;
+  }
+  #leaderboard {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 10px;
+    border-radius: 5px;
+  }
+  #leaderboard h3 {
+    margin-top: 0;
+    margin-bottom: 5px;
+  }
+  #leaderboard ol {
+    padding-left: 25px;
+    margin-bottom: 0;
+  }
+  #gameOverScreen {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.9);
+    border: 2px solid #00ff00;
+    box-shadow: 0 0 10px #00ff00;
+    color: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    display: none;
+  }
+  #playAgainButton {
+    margin-top: 10px;
+    padding: 10px 20px;
+    font-size: 18px;
+    background-color: #00ff00;
+    color: #000000;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  #playAgainButton:hover {
+    background-color: #00cc00;
+  }
+  #playerNameInput {
+    margin-top: 10px;
+    padding: 5px;
+    font-size: 16px;
+    width: 200px;
+    background-color: #000000;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" style="display: none;"></canvas>
+<div id="playerInfo">Mass: <span id="mass">20</span></div>
+<div id="leaderboard">
+  <h3>Leaderboard</h3>
+  <ol id="leaderboardList"></ol>
+</div>
+<div id="gameOverScreen">
+  <h2>Game Over</h2>
+  <p>Your final score: <span id="finalScore"></span></p>
+  <input type="text" id="playerNameInput" placeholder="Enter your name" maxlength="20">
+  <button id="playAgainButton">Play Again</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+<script>
+const MAP_SIZE = 4000;
+const CELL_SPEED = 3;
+const INITIAL_MASS = 20;
+const INITIAL_FOOD_COUNT = 2000;
+const INITIAL_BOT_COUNT = 50;
+const PLAYER_GROWTH_FACTOR = 1.5;
+const BOT_SPEED_FACTOR = 0.8;
+const NAME_PREFIXES = [
+  "Neo", "Cyber", "Synth", "Digi", "Virt", 
+  "Nano", "Quantum", "Bio", "Techno", "Holo",
+  "Mecha", "Crypto", "Data", "Neon", "Pulse",
+  "Giga", "Hyper", "Tera", "Flux", "Zeta"
+];
+const NAME_SUFFIXES = [
+  "X", "Core", "Node", "Wave", "Byte", 
+  "Link", "Net", "Grid", "Sphere", "Nexus",
+  "Matrix", "Cortex", "Pulse", "Flux", "Void",
+  "Scape", "Sync", "Circuit", "Stream", "Unit"
+];
+let cells = [];
+let food = [];
+let zoom = 1;
+let leaderboard = [];
+let gameOver = false;
+let cameraTarget;
+let playerCell;
+let zoomLevel = 1;
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  initGame();
+}
+
+function initGame() {
+  cells = [];
+  food = [];
+  for (let i = 0; i < INITIAL_FOOD_COUNT; i++) {
+    food.push(new Food(random(MAP_SIZE), random(MAP_SIZE)));
+  }
+  for (let i = 0; i < INITIAL_BOT_COUNT; i++) {
+    cells.push(new Cell(random(MAP_SIZE), random(MAP_SIZE), INITIAL_MASS, Cell.getUniqueName(), false));
+  }
+  spawnPlayer();
+  gameOver = false;
+  document.getElementById('gameOverScreen').style.display = 'none';
+}
+
+function spawnPlayer() {
+  playerCell = new Cell(MAP_SIZE / 2, MAP_SIZE / 2, INITIAL_MASS, "Здесь ваша реклама", true);
+  cells.push(playerCell);
+  cameraTarget = playerCell;
+}
+
+function draw() {
+  background(10);
+
+  translate(width / 2, height / 2);
+  let newzoom = 64 / (cameraTarget.r * zoomLevel);
+  zoom = lerp(zoom, newzoom, 0.1);
+  scale(zoom);
+  translate(-cameraTarget.pos.x, -cameraTarget.pos.y);
+
+  stroke(0, 255, 0);
+  strokeWeight(5);
+  noFill();
+  rect(0, 0, MAP_SIZE, MAP_SIZE);
+
+  if (random() < 0.5) {
+    food.push(new Food(random(MAP_SIZE), random(MAP_SIZE)));
+  }
+
+  for (let i = food.length - 1; i >= 0; i--) {
+    food[i].show();
+  }
+
+  for (let i = cells.length - 1; i >= 0; i--) {
+    cells[i].update();
+    cells[i].show();
+
+    for (let j = food.length - 1; j >= 0; j--) {
+      if (cells[i].eats(food[j])) {
+        food.splice(j, 1);
+      }
+    }
+
+    for (let j = cells.length - 1; j >= 0; j--) {
+      if (i !== j && cells[i].eats(cells[j])) {
+        cells[i].mass += cells[j].mass;
+        if (cells[j].isPlayer) {
+          gameOver = true;
+          document.getElementById('gameOverScreen').style.display = 'block';
+          document.getElementById('finalScore').textContent = floor(cells[j].mass);
+          cameraTarget = cells[i];
+          cells.splice(j, 1);
+        } else {
+          respawnCell(j);
+        }
+        if (j < i) i--;
+      }
+    }
+  }
+
+  updateLeaderboard();
+  document.getElementById('mass').textContent = gameOver ? 0 : floor(playerCell.mass);
+}
+
+function respawnCell(index) {
+  let oldCell = cells[index];
+  let newCell = new Cell(random(MAP_SIZE), random(MAP_SIZE), INITIAL_MASS, Cell.getUniqueName(), false);
+  cells[index] = newCell;
+}
+
+class Cell {
+  constructor(x, y, mass, name, isPlayer) {
+    this.pos = createVector(x, y);
+    this.mass = mass;
+    this.r = sqrt(this.mass / PI) * 10;
+    this.vel = createVector(0, 0);
+    this.name = name;
+    this.isPlayer = isPlayer;
+    this.color = color(random(0, 100), random(100, 255), random(100, 255));
+    this.targetPos = null;
+    this.lastTargetTime = 0;
+    this.currentTarget = null;
+    this.state = 'wander';
+    this.stateChangeTime = 0;
+    this.fleeTarget = null;
+    this.blinkOffset = random(TWO_PI);
+  }
+
+  static getUniqueName() {
+    let prefix = random(NAME_PREFIXES);
+    let suffix = random(NAME_SUFFIXES);
+    let name = prefix + " " + suffix;
+    if (cells.some(c => c.name === name)) {
+      name += " " + floor(random(1000));
+    }
+    return name;
+  }
+
+  update() {
+    if (this.isPlayer && !gameOver) {
+      this.movePlayer();
+    } else {
+      this.think();
+      this.move();
+    }
+    this.pos.add(this.vel);
+    this.pos.x = constrain(this.pos.x, this.r, MAP_SIZE - this.r);
+    this.pos.y = constrain(this.pos.y, this.r, MAP_SIZE - this.r);
+    this.r = sqrt(this.mass / PI) * 10;
+  }
+
+  think() {
+    let currentTime = millis();
+    if (currentTime - this.stateChangeTime > 10000) {
+      this.state = random() < 0.7 ? 'hunt' : 'wander';
+      this.stateChangeTime = currentTime;
+    }
+
+    if (currentTime - this.lastTargetTime < 5000 && this.currentTarget) {
+      if (cells.includes(this.currentTarget) || food.includes(this.currentTarget)) {
+        this.targetPos = this.currentTarget.pos;
+        return;
+      }
+    }
+
+    this.lastTargetTime = currentTime;
+
+    let nearestFood = null;
+    let minDistanceFood = Infinity;
+    let nearestSmallerCell = null;
+    let minDistanceSmallerCell = Infinity;
+    let nearestBiggerCell = null;
+    let minDistanceBiggerCell = Infinity;
+    const detectionRange = width / zoom;
+
+    for (let f of food) {
+      let d = p5.Vector.dist(this.pos, f.pos);
+      if (d < detectionRange && d < minDistanceFood) {
+        nearestFood = f;
+        minDistanceFood = d;
+      }
+    }
+
+    for (let c of cells) {
+      if (c !== this) {
+        let d = p5.Vector.dist(this.pos, c.pos);
+        if (d < detectionRange) {
+          if (this.mass > c.mass * 1.1 && d < minDistanceSmallerCell) {
+            nearestSmallerCell = c;
+            minDistanceSmallerCell = d;
+          } else if (c.mass > this.mass * 1.1 && d < minDistanceBiggerCell) {
+            nearestBiggerCell = c;
+            minDistanceBiggerCell = d;
+          }
+        }
+      }
+    }
+
+    if (nearestBiggerCell && minDistanceBiggerCell < this.r * 5) {
+      this.state = 'flee';
+      this.fleeTarget = nearestBiggerCell;
+    } else if (this.state === 'hunt' && nearestSmallerCell) {
+      this.targetPos = nearestSmallerCell.pos;
+      this.currentTarget = nearestSmallerCell;
+    } else if (nearestFood) {
+      this.targetPos = nearestFood.pos;
+      this.currentTarget = nearestFood;
+    } else {
+      this.targetPos = createVector(random(MAP_SIZE), random(MAP_SIZE));
+      this.currentTarget = null;
+    }
+  }
+
+  move() {
+    let targetVector;
+    if (this.state === 'flee' && this.fleeTarget) {
+      targetVector = p5.Vector.sub(this.pos, this.fleeTarget.pos);
+    } else if (this.targetPos) {
+      targetVector = p5.Vector.sub(this.targetPos, this.pos);
+    } else {
+      targetVector = p5.Vector.random2D();
+    }
+    
+    targetVector.setMag(CELL_SPEED);
+    this.vel.lerp(targetVector, 0.2);
+
+    let centerVector = p5.Vector.sub(createVector(MAP_SIZE/2, MAP_SIZE/2), this.pos);
+    let distanceToCenter = centerVector.mag();
+    let centerInfluence = map(distanceToCenter, 0, MAP_SIZE/2, 0, 0.5);
+    centerVector.setMag(centerInfluence);
+    this.vel.add(centerVector);
+
+    this.vel.setMag(CELL_SPEED);
+    if (!this.isPlayer) {
+      this.vel.mult(BOT_SPEED_FACTOR);
+    }
+  }
+
+  movePlayer() {
+    let mouseVector = createVector(mouseX - width/2, mouseY - height/2);
+    mouseVector.div(zoom);
+    mouseVector.setMag(CELL_SPEED);
+    this.vel = mouseVector;
+  }
+
+  eats(other) {
+    if (other instanceof Food) {
+      let d = p5.Vector.dist(this.pos, other.pos);
+      if (d < this.r + other.r) {
+        this.mass += this.isPlayer ? PLAYER_GROWTH_FACTOR : 1;
+        return true;
+      }
+    } else if (other instanceof Cell) {
+      let d = p5.Vector.dist(this.pos, other.pos);
+      if (d < this.r && this.mass > other.mass * 1.1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  show() {
+    push();
+    translate(this.pos.x, this.pos.y);
+    
+    beginShape();
+    for (let i = 0; i < 6; i++) {
+      let angle = TWO_PI / 6 * i - PI / 6;
+      let x = cos(angle) * this.r;
+      let y = sin(angle) * this.r;
+      vertex(x, y);
+    }
+    endShape(CLOSE);
+    
+    fill(0, 100);
+    beginShape();
+    for (let i = 0; i < 6; i++) {
+      let angle = TWO_PI / 6 * i - PI / 6;
+      let x = cos(angle) * this.r * 0.6;
+      let y = sin(angle) * this.r * 0.6;
+      vertex(x, y);
+    }
+    endShape(CLOSE);
+
+    if (this.isPlayer) {
+      let blinkIntensity = sin(frameCount * 0.1 + this.blinkOffset) * 0.5 + 0.5;
+      fill(0, 255 * blinkIntensity, 0);
+    } else {
+      fill(0, 255, 0);
+    }
+    textAlign(CENTER, CENTER);
+    textSize(this.r * 0.3);
+    text(this.name, 0, this.r + 15);
+    pop();
+  }
+}
+
+class Food {
+  constructor(x, y) {
+    this.pos = createVector(x, y);
+    this.r = 3;
+    this.color = color(0, random(100, 255), random(100, 255));
+  }
+
+  show() {
+    fill(this.color);
+    noStroke();
+    push();
+    translate(this.pos.x, this.pos.y);
+    rotate(frameCount * 0.1);
+    rectMode(CENTER);
+    rect(0, 0, this.r * 2, this.r * 2);
+    pop();
+  }
+}
+
+function updateLeaderboard() {
+  leaderboard = cells.sort((a, b) => b.mass - a.mass).slice(0, 10);
+  let leaderboardHTML = "";
+  leaderboard.forEach((cell, index) => {
+    leaderboardHTML += `<li>${cell.name}: ${floor(cell.mass)}</li>`;
+  });
+  document.getElementById('leaderboardList').innerHTML = leaderboardHTML;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+document.getElementById('playAgainButton').addEventListener('click', function() {
+  let playerName = document.getElementById('playerNameInput').value.trim();
+  if (playerName !== "") {
+    playerCell.name = playerName;
+  }
+  spawnPlayer();
+  gameOver = false;
+  document.getElementById('gameOverScreen').style.display = 'none';
+});
+
+function mouseWheel(event) {
+  zoomLevel = constrain(zoomLevel + event.delta * 0.001, 0.5, 2);
+  return false;
+}
+
+function mousePressed() {
+}
+</script>
+</body></html>
